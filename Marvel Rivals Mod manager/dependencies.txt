@@ -1,0 +1,12 @@
+Third-Party Dependencies
+The following third-party libraries may be required:
+
+Likely Needed:
+py7zr – For handling .7z archive files.
+rarfile – For handling .rar archive files.
+Pillow – (Optional) If your application uses image manipulation for icons or resources.
+Optional (Depending on Advanced Features):
+pyinstaller – For converting the script into an .exe file (developer-side only).
+watchdog – If your app monitors file changes dynamically (e.g., watching Mods folder).
+
+pip install py7zr rarfile Pillow
