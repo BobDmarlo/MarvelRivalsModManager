@@ -92,6 +92,7 @@ Ensure your graphics drivers are up to date.
 3. Dependencies Not Found:
 Run the following command to ensure all required dependencies are installed:
 pip install py7zr rarfile Pillow
+4. False positives by your anti virus.
 
 
 # Usage
