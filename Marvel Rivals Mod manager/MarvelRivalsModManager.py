@@ -81,21 +81,30 @@ def list_paks(directory):
         return [f for f in os.listdir(mods_folder) if f.endswith(".pak")]
     return []
 
-def extract_archive(archive_path, extract_to):
+def extract_archive(self, archive_path, extract_to):
+    """Extract an archive and add .pak files to the Applied Mods list."""
     try:
         if archive_path.endswith(".zip"):
             with zipfile.ZipFile(archive_path, "r") as archive:
-                app._extract_and_add_paks(archive, archive_path)
+                archive.extractall(extract_to)
         elif archive_path.endswith(".7z"):
             with py7zr.SevenZipFile(archive_path, "r") as archive:
-                app._extract_and_add_paks(archive, archive_path)
+                archive.extractall(extract_to)
         elif archive_path.endswith(".rar"):
             with rarfile.RarFile(archive_path, "r") as archive:
-                app._extract_and_add_paks(archive, archive_path)
+                archive.extractall(extract_to)
         else:
-            messagebox.showerror("Error", "Unsupported archive format.")
+            messagebox.showerror("Error", f"Unsupported archive format: {archive_path}")
+            return
+
+        # Add all extracted .pak files to the Applied Mods list
+        for root, _, files in os.walk(extract_to):
+            for extracted_file in files:
+                if extracted_file.endswith(".pak"):
+                    extracted_path = os.path.join(root, extracted_file)
+                    self.add_pak_to_list(extracted_path)
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to extract archive: {e}")
+        messagebox.showerror("Error", f"Failed to extract archive '{os.path.basename(archive_path)}': {e}")
         
        
 class SettingsWindow(tk.Toplevel):
@@ -235,22 +244,24 @@ class ModManagerApp:
 
         
     def add_mod(self):
-        """Add a mod to the applied mods list."""
+        """Add one or multiple mods to the applied mods list."""
         if not self.current_profile:  # Only create Default if no profile is active
             self.ensure_default_profile()
-            
-        file_path = filedialog.askopenfilename(
-            filetypes=[
-                ("Supported Mod Files", "*.pak *.zip *.7z *.rar")  # Unified filter for supported files
-            ]
+        
+        # Allow selection of multiple files
+        file_paths = filedialog.askopenfilenames(
+            filetypes=[("Supported Mod Files", "*.pak *.zip *.7z *.rar")]  # Unified filter for supported files
         )
-        if file_path:
+        if not file_paths:
+            return  # User canceled the dialog
+
+        for file_path in file_paths:
             mod_name = os.path.basename(file_path)
 
             # Handle .pak files directly
             if file_path.endswith(".pak"):
                 self.add_pak_to_list(file_path)
-                return
+                continue
 
             # Handle archive files
             if file_path.endswith((".zip", ".7z", ".rar")):
@@ -469,7 +480,7 @@ class ModManagerApp:
         for widget in self.root.winfo_children():
             widget.destroy()
 
-        tk.Label(self.root, text="Select your Marvel's Avengers game folder:").pack(pady=20)
+        tk.Label(self.root, text="Select your Marvel Rivals game folder:").pack(pady=20)
         tk.Button(self.root, text="Browse", command=self.browse_folder).pack()
 
     def browse_folder(self):
@@ -628,32 +639,21 @@ class ModManagerApp:
         """Open the settings popup."""
         popup = tk.Toplevel(self.root)
         popup.title("Settings")
-        popup.geometry("800x600")  # Set default size
-
-        # Center the popup on the screen
-        popup.update_idletasks()
-        popup_width = popup.winfo_width()
-        popup_height = popup.winfo_height()
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        x_position = (screen_width // 2) - (popup_width // 2)
-        y_position = (screen_height // 2) - (popup_height // 2)
-        popup.geometry(f"400x200+{x_position}+{y_position}")
-
-        # Make it non-resizable
+        popup.geometry("400x300")  # Adjusted size
         popup.resizable(False, False)
 
-        # Set the app icon
+        # Center the popup
+        self.root.after(10, lambda: self.center_popup(popup))
+
+        # Set app icon
         icon_path = os.path.join(os.path.dirname(__file__), "app.ico")
         if os.path.exists(icon_path):
             popup.iconbitmap(icon_path)
 
-        # Settings content
+        # Add Settings Content
         tk.Label(popup, text="Settings", font=("Arial", 14, "bold")).pack(pady=10)
-
-        # Current Game Directory
         tk.Label(popup, text="Game Directory:").pack(pady=5)
-        tk.Label(popup, text=self.selected_folder or "Not Set").pack()
+        tk.Label(popup, text=self.selected_folder or "Not Set").pack(pady=5)
 
         # Change Game Directory Button
         tk.Button(popup, text="Change Game Directory", command=self.show_folder_selector).pack(pady=5)
@@ -667,6 +667,117 @@ class ModManagerApp:
             command=lambda: self.toggle_theme(theme_var.get()),
         ).pack(pady=5)
 
+        # Clear Backups Button
+        tk.Button(popup, text="Clear Backups", command=self.clear_backups_popup).pack(pady=5)
+
+        # Close Button
+        tk.Button(popup, text="Close", command=popup.destroy).pack(pady=10)
+
+    def clear_backups_popup(self):
+        """Show a popup to clear backups for all profiles or specific profiles."""
+        popup = tk.Toplevel(self.root)
+        popup.title("Clear Backups")
+        popup.geometry("400x300")
+        popup.resizable(False, False)
+        popup.transient(self.root)
+        popup.grab_set()
+        popup.attributes('-topmost', True)
+
+        # Center the popup
+        self.root.after(10, lambda: self.center_popup(popup))
+
+        # Set app icon
+        icon_path = os.path.join(os.path.dirname(__file__), "app.ico")
+        if os.path.exists(icon_path):
+            popup.iconbitmap(icon_path)
+
+        # Backup profiles folder
+        backup_profiles_folder = os.path.join(
+            BACKUP_FOLDER, "Profiles"
+        )
+
+        # Get list of profiles with backups
+        profiles = []
+        if os.path.exists(backup_profiles_folder):
+            profiles = [
+                name for name in os.listdir(backup_profiles_folder)
+                if os.path.isdir(os.path.join(backup_profiles_folder, name))
+            ]
+
+        # Profiles Listbox
+        tk.Label(popup, text="Select Profile Backups to Clear:").pack(pady=10)
+        profiles_var = tk.StringVar(value=profiles)
+        profiles_listbox = tk.Listbox(
+            popup, listvariable=profiles_var, selectmode=tk.MULTIPLE, height=10
+        )
+        profiles_listbox.pack(pady=5, fill=tk.BOTH, expand=True)
+
+        # Clear Selected Backups
+        def clear_selected():
+            selected_indices = profiles_listbox.curselection()
+            if not selected_indices:
+                messagebox.showwarning("Warning", "No profiles selected.", parent=popup)
+                return
+
+            # Confirm Deletion
+            confirm = messagebox.askyesno(
+                "Confirm Deletion",
+                "Are you sure you want to clear the selected backups?",
+                parent=popup,
+            )
+            if not confirm:
+                return
+
+            # Remove Selected Profiles
+            for index in selected_indices:
+                profile_name = profiles[index]
+                profile_backup_path = os.path.join(backup_profiles_folder, profile_name)
+                try:
+                    shutil.rmtree(profile_backup_path)
+                    print(f"DEBUG: Removed backup -> {profile_backup_path}")
+                except Exception as e:
+                    messagebox.showerror(
+                        "Error", f"Failed to clear backup for {profile_name}: {e}", parent=popup
+                    )
+
+            # Refresh Profiles List
+            remaining_profiles = [
+                name for name in os.listdir(backup_profiles_folder)
+                if os.path.isdir(os.path.join(backup_profiles_folder, name))
+            ]
+            profiles_var.set(remaining_profiles)
+
+            # Refresh Profile Selection
+            self.update_profile_dropdown()  # Add this to refresh profile selection in the app
+
+            messagebox.showinfo("Success", "Selected backups cleared.", parent=popup)
+
+        # Clear All Backups
+        def clear_all():
+            confirm = messagebox.askyesno(
+                "Confirm Deletion", "Are you sure you want to clear ALL backups?", parent=popup
+            )
+            if not confirm:
+                return
+
+            try:
+                shutil.rmtree(backup_profiles_folder)
+                os.makedirs(backup_profiles_folder, exist_ok=True)
+                profiles_var.set([])
+
+                # Refresh Profile Selection
+                self.update_profile_dropdown()  # Add this to refresh profile selection in the app
+
+                messagebox.showinfo("Success", "All backups cleared.", parent=popup)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to clear all backups: {e}", parent=popup)
+
+        # Add Buttons
+        tk.Button(popup, text="Clear Selected", command=clear_selected).pack(pady=5)
+        tk.Button(popup, text="Clear All", command=clear_all).pack(pady=5)
+        tk.Button(popup, text="Close", command=popup.destroy).pack(pady=10)
+
+
     def update_pak_list(self):
         """Refresh the displayed lists of Paks in Folder and Applied Mods."""
         self.sync_profiles()   
@@ -677,6 +788,119 @@ class ModManagerApp:
                 for pak in sorted(os.listdir(mods_folder)):  # Alphabetically sort for UX
                     if pak.endswith(".pak"):
                         self.pak_listbox.insert(tk.END, pak)
+                        
+    def clear_backups_popup(self):
+        """Show a popup to clear backups for all profiles or specific profiles."""
+        popup = tk.Toplevel(self.root)
+        popup.title("Clear Backups")
+        popup.geometry("400x300")
+        popup.resizable(False, False)
+
+        # Center the popup
+        self.root.after(10, lambda: self.center_popup(popup))
+
+        # Set app icon
+        icon_path = os.path.join(os.path.dirname(__file__), "app.ico")
+        if os.path.exists(icon_path):
+            popup.iconbitmap(icon_path)
+
+        # Backup profiles folder
+        backup_profiles_folder = os.path.join(BACKUP_FOLDER, "Profiles")
+
+        # Get initial list of profiles with backups
+        def get_profiles():
+            if os.path.exists(backup_profiles_folder):
+                return [
+                    name for name in os.listdir(backup_profiles_folder)
+                    if os.path.isdir(os.path.join(backup_profiles_folder, name))
+                ]
+            return []
+
+        profiles_var = tk.StringVar(value=get_profiles())
+
+        # Profiles Listbox
+        tk.Label(popup, text="Select Profile Backups to Clear:").pack(pady=10)
+        profiles_listbox = tk.Listbox(
+            popup, listvariable=profiles_var, selectmode=tk.MULTIPLE, height=10
+        )
+        profiles_listbox.pack(pady=5, fill=tk.BOTH, expand=True)
+
+        # Refresh the profiles list dynamically
+        def refresh_profiles():
+            current_profiles = profiles_var.get()
+            updated_profiles = get_profiles()
+
+            if current_profiles != updated_profiles:
+                profiles_var.set(updated_profiles)
+            
+            # Refresh every 2 seconds
+            popup.after(2000, refresh_profiles)
+
+        refresh_profiles()  # Start the dynamic refresh
+
+        # Clear Selected Backups
+        def clear_selected():
+            selected_indices = profiles_listbox.curselection()
+            if not selected_indices:
+                messagebox.showwarning("Warning", "No profiles selected.", parent=popup)
+                return
+
+            # Confirm Deletion
+            confirm = messagebox.askyesno(
+                "Confirm Deletion",
+                "Are you sure you want to clear the selected backups?",
+                parent=popup,
+            )
+            if not confirm:
+                return
+
+            # Remove Selected Profiles
+            for index in selected_indices:
+                try:
+                    profile_name = profiles_listbox.get(index)  # Fetch profile name
+                    if not profile_name.strip():  # Skip if the profile name is empty
+                        continue
+
+                    profile_backup_path = os.path.join(backup_profiles_folder, profile_name)
+                    if os.path.exists(profile_backup_path):
+                        shutil.rmtree(profile_backup_path)
+                        print(f"DEBUG: Removed backup -> {profile_backup_path}")
+                    else:
+                        print(f"DEBUG: Path does not exist -> {profile_backup_path}")
+
+                except Exception as e:
+                    messagebox.showerror(
+                        "Error", f"Failed to clear backup for '{profile_name}': {e}", parent=popup
+                    )
+
+            # Refresh Profiles List
+            remaining_profiles = [
+                name for name in os.listdir(backup_profiles_folder)
+                if os.path.isdir(os.path.join(backup_profiles_folder, name))
+            ]
+            profiles_var.set(remaining_profiles)
+            messagebox.showinfo("Success", "Selected backups cleared.", parent=popup)
+
+        # Clear All Backups
+        def clear_all():
+            confirm = messagebox.askyesno(
+                "Confirm Deletion", "Are you sure you want to clear ALL backups?", parent=popup
+            )
+            if not confirm:
+                return
+
+            try:
+                shutil.rmtree(backup_profiles_folder)
+                os.makedirs(backup_profiles_folder, exist_ok=True)
+                profiles_var.set([])
+                messagebox.showinfo("Success", "All backups cleared.", parent=popup)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to clear all backups: {e}", parent=popup)
+
+        # Add Buttons
+        tk.Button(popup, text="Clear Selected", command=clear_selected).pack(pady=5)
+        tk.Button(popup, text="Clear All", command=clear_all).pack(pady=5)
+        tk.Button(popup, text="Close", command=popup.destroy).pack(pady=10)
 
                 
     def show_context_menu(self, event):
@@ -703,11 +927,48 @@ class ModManagerApp:
             messagebox.showerror("Error", f"Failed to show context menu: {e}")
 
     def remove_from_folder(self, file_path):
-        if messagebox.askyesno("Confirm Removal", f"Are you sure you want to remove {os.path.basename(file_path)}?"):
-            os.remove(file_path)
-            self.update_pak_list()
-            
+        """Move a file to the current profile's backup folder under the global backup directory."""
+        try:
+            # Ensure a profile is loaded
+            if not self.current_profile:
+                messagebox.showerror("Error", "No profile is currently loaded.")
+                return
 
+            # Path to global backup folder for profiles
+            backup_folder = os.path.join(
+                os.getenv("LOCALAPPDATA"),
+                "MarvelRivalsModManager",
+                "backup",
+                "Profiles",
+                self.current_profile
+            )
+            os.makedirs(backup_folder, exist_ok=True)  # Ensure profile's backup directory exists
+
+            # Check if the file exists
+            if not os.path.exists(file_path):
+                messagebox.showerror("Error", "File not found.")
+                return
+
+            # Determine the destination path in the backup folder
+            file_name = os.path.basename(file_path)
+            backup_path = os.path.join(backup_folder, file_name)
+
+            if os.path.exists(backup_path):
+                # File is already backed up
+                print(f"DEBUG: File already backed up -> {backup_path}")
+            else:
+                # Move the file to the profile's backup folder
+                print(f"DEBUG: Moving file to backup -> {backup_path}")
+                shutil.move(file_path, backup_path)
+
+            # Refresh the Mods folder list
+            self.update_pak_list()
+            messagebox.showinfo("Success", f"File removed and backed up: {file_name}")
+
+        except Exception as e:
+            print(f"DEBUG: Backup error -> {e}")
+            messagebox.showerror("Error", f"An error occurred: {e}")
+            
     def view_file_location(self, file_path):
         os.startfile(os.path.dirname(file_path))
 
@@ -751,18 +1012,21 @@ class ModManagerApp:
             messagebox.showerror("Error", f"Failed to remove mod: {e}")
 
     def apply_mods(self):
+        """Apply the selected mods and sync the active profile."""
         if not self.current_profile:
             self.ensure_default_profile()
-            
+
         if not self.selected_folder:
             messagebox.showerror("Error", "No game folder selected.")
             return
 
-        mods_folder = os.path.join(self.selected_folder, "MarvelGame", "Marvel", "Content", "Paks", "Mods")
+        mods_folder = os.path.join(
+            self.selected_folder, "MarvelGame", "Marvel", "Content", "Paks", "Mods"
+        )
         os.makedirs(mods_folder, exist_ok=True)
 
-
         try:
+            # Apply mods to the Mods folder
             for i in range(self.applied_mods_listbox.size()):
                 mod_name = self.applied_mods_listbox.get(i)
                 source_path = self.active_profile.get(mod_name)  # Get the original file path
@@ -770,9 +1034,26 @@ class ModManagerApp:
                     destination_path = os.path.join(mods_folder, mod_name)
                     shutil.copy2(source_path, destination_path)
 
+            # Sync the active profile
+            active_profile_folder = os.path.join(
+                os.getenv("LOCALAPPDATA"),
+                "MarvelRivalsModManager",
+                "profiles",
+                self.current_profile,
+            )
+            os.makedirs(active_profile_folder, exist_ok=True)
+
+            # Copy mods from Mods folder to the active profile folder
+            for file in os.listdir(mods_folder):
+                if file.endswith(".pak"):
+                    shutil.copy2(os.path.join(mods_folder, file), active_profile_folder)
+
+            # Sync profile.json for the active profile
+            self.sync_profiles()
+
             self.applied_mods_listbox.delete(0, tk.END)  # Clear applied mods after applying
             self.update_pak_list()  # Refresh the Paks in folder
-            messagebox.showinfo("Success", "Mods applied successfully!")
+            messagebox.showinfo("Success", "Mods applied and profile updated successfully!")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to apply mods: {e}")
             
@@ -781,6 +1062,28 @@ class ModManagerApp:
         if hasattr(self, "current_profile_label"):
             active_profile_text = f"Active Profile: {self.current_profile or 'None'}"
             self.current_profile_label.config(text=active_profile_text)
+            
+    def update_profile_dropdown(self):
+        """Refresh the profile selection dropdown in the application."""
+        profiles_folder = os.path.join(
+            os.getenv("LOCALAPPDATA"), "MarvelRivalsModManager", "profiles"
+        )
+
+        if os.path.exists(profiles_folder):
+            profiles = [
+                name for name in os.listdir(profiles_folder)
+                if os.path.isdir(os.path.join(profiles_folder, name))
+            ]
+        else:
+            profiles = []
+
+        # Update dropdown or relevant UI component
+        if hasattr(self, "profile_dropdown"):  # Assuming `profile_dropdown` is a combobox
+            self.profile_dropdown['values'] = profiles
+            if profiles:
+                self.profile_dropdown.set(profiles[0])  # Set the first profile as default
+            else:
+                self.profile_dropdown.set("")
 
     def center_popup(self, popup):
         """Centers a popup window on the screen."""
