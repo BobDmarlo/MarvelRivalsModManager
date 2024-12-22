@@ -11,7 +11,7 @@ Marvel Rivals Mod Manager is an easy tool designed to simplify managing modded .
 
 ✨ Features
 
-General Features
+General Features:
 
 Game Folder Verification: Ensures the correct game folder is selected by checking for MarvelRivals_Launcher.exe.
 
@@ -30,6 +30,8 @@ Supports a customizable dark theme for a comfortable UI experience.
 
 Integrated Launcher
 Launch the game directly from the application with one click.
+
+Backup files when deleted in case of mistake > can be cleared via settings.
 
 
 
