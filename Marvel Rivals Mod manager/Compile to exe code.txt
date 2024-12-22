@@ -1,0 +1,1 @@
+pyinstaller --onefile --noconsole --icon=app.ico --add-data "app.ico;." --version-file=version_info.txt MarvelRivalsModManager.py
